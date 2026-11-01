@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function () {
+            var t = 'dark';
+            try { var salvo = localStorage.getItem('ipcm-tema'); if (salvo === 'light' || salvo === 'dark') t = salvo; } catch (e) {}
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <title>IPCM Predict | Potencial de Consórcio por Município</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <!-- Leaflet.js para o Mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Paleta Databricks Modern Dark Mode */
+        :root {
+            --bg-color: #0d1117;          
+            --sidebar-bg: #161b22;        
+            --card-bg: #1f2430;           
+            --card-hover: #262c3a;
+            --text-main: #f0f6fc;         
+            --text-muted: #8b949e;        
+            --primary: #FF3621;           
+            --primary-hover: #ff523b;
+            --blue-accent: #388bfd;       
+            --success: #2ea043;           
+            --warning: #e3b341;           
+            --danger: #f85149;            
+            --border: rgba(240, 246, 252, 0.1); 
+            --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            --radius-lg: 20px;            
+            --radius-md: 14px;
+            --radius-sm: 10px;
+
+            --text-strong: #ffffff;
+            --border-strong: rgba(255, 255, 255, 0.2);
+            --hover-bg: rgba(255, 255, 255, 0.03);
+            --item-bg: rgba(255, 255, 255, 0.02);
+            --th-bg: rgba(0, 0, 0, 0.3);
+            --map-bg: #111111;
+            --attr-bg: rgba(13, 17, 23, 0.7);
+            --success-text: #56d364;
+            --warning-text: #e3b341;
+            --chart-grid: rgba(240, 246, 252, 0.1);
+            --radar-fill: rgba(56, 139, 253, 0.25);
+            color-scheme: dark;
+        }
+
+        /* Tema claro */
+        :root[data-theme="light"] {
+            --bg-color: #f6f8fa;
+            --sidebar-bg: #ffffff;
+            --card-bg: #f6f8fa;
+            --card-hover: #eaeef2;
+            --text-main: #1f2328;
+            --text-muted: #59636e;
+            --blue-accent: #0969da;
+            --success: #1a7f37;
+            --warning: #9a6700;
+            --danger: #cf222e;
+            --border: rgba(31, 35, 40, 0.15);
+            --card-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+
+            --text-strong: #1f2328;
+            --border-strong: rgba(31, 35, 40, 0.3);
+            --hover-bg: rgba(31, 35, 40, 0.04);
+            --item-bg: rgba(31, 35, 40, 0.03);
+            --th-bg: rgba(31, 35, 40, 0.05);
+            --map-bg: #dfe3e8;
+            --attr-bg: rgba(255, 255, 255, 0.75);
+            --success-text: #1a7f37;
+            --warning-text: #9a6700;
+            --chart-grid: rgba(31, 35, 40, 0.15);
+            --radar-fill: rgba(9, 105, 218, 0.18);
+            color-scheme: light;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        body { 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            display: flex; 
+            height: 100vh;      
+            overflow: hidden;   
+        }
+
+        /* Sidebar Arredondada */
+        .sidebar { width: 320px; background-color: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 28px; display: flex; flex-direction: column; gap: 22px; z-index: 10; overflow-y: auto; flex-shrink: 0;}
+        .logo { font-size: 20px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 12px; }
+        .logo-sub { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-top: 4px; }
+
+        .sidebar-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .btn-tema { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--card-bg); color: var(--text-main); font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+        .btn-tema:hover { background: var(--card-hover); border-color: var(--border-strong); }
+        .btn-tema:focus-visible { outline: 2px solid var(--blue-accent); outline-offset: 2px; }
+
+        /* Controles */
+        .control-group label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.8px; }
+        select { width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; background-color: var(--card-bg); color: var(--text-main); outline: none; transition: all 0.25s ease; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
+        select:hover { background-color: var(--card-hover); border-color: var(--border-strong); }
+        select:focus { border-color: var(--blue-accent); box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.2); }
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 6px; border-radius: 10px; }
+        .slider-value { text-align: right; font-size: 12px; font-weight: 600; color: var(--blue-accent); margin-top: 6px; }
+
+        .btn-export { margin-top: auto; padding: 14px; background: linear-gradient(135deg, var(--primary) 0%, #d82310 100%); color: white; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s ease; width: 100%; box-shadow: 0 4px 14px rgba(255, 54, 33, 0.3); }
+        .btn-export:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 54, 33, 0.45); }
+
+        /* Área Principal */
+        .main-content { 
+            flex: 1; 
+            padding: 36px 40px; 
+            overflow-y: auto;   
+            height: 100%; 
+        }
+        
+        .header { margin-bottom: 32px; }
+        .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; color: var(--text-strong); letter-spacing: -0.5px; }
+        .header p { color: var(--text-muted); font-size: 14px; }
+
+        /* 1. KPIs */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 32px; }
+        .kpi-card { background: var(--sidebar-bg); padding: 22px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--card-shadow); transition: transform 0.2s ease, border-color 0.2s ease; }
+        .kpi-card:hover { transform: translateY(-3px); border-color: var(--border-strong); }
+        .kpi-title { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+        .kpi-value { font-size: 24px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px; }
+        .kpi-sub { font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+
+        /* 2. MAPA DE CALOR - LARGURA TOTAL E SOZINHO NA LINHA */
+        .map-full-section { background: var(--sidebar-bg); padding: 26px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--card-shadow); display: flex; flex-direction: column; margin-bottom: 32px; }
+        #map { width: 100%; height: 420px; border-radius: var(--radius-md); background-color: var(--map-bg); z-index: 1;}
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--card-bg); color: var(--text-main); }
+        .leaflet-popup-content b { color: var(--blue-accent); }
+        .map-legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center; font-size: 11px; color: var(--text-muted); align-items: center; }
+        .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .map-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+        .map-legend .dot.sem-dado { border: 1px dashed var(--text-muted); }
+        .map-wrap { position: relative; }
+        .map-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 14px; font-size: 12px; box-shadow: var(--card-shadow); }
+        .map-status[hidden] { display: none; }
+        .table-note { padding: 12px 22px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        .table-note[hidden] { display: none; }
+        .btn-centralizar a { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; cursor: pointer; }
+        .btn-centralizar svg { width: 18px; height: 18px; }
+        .map-tooltip { background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--card-shadow); font-size: 12px; }
+        .map-tooltip b { color: var(--blue-accent); }
+        .leaflet-tooltip.map-tooltip::before { display: none; }
+        .leaflet-container .leaflet-control-attribution { background: var(--attr-bg); color: var(--text-muted); font-size: 10px; }
+        .leaflet-control-attribution a { color: var(--blue-accent); }
+
+        /* Tema escuro apenas nos tiles (não afeta controles nem a malha colorida) */
+        :root[data-theme="dark"] .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+
+        /* 3. GRID CENTRAL (Radar e Ranking - 2 Colunas Lado a Lado) */
+        .middle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+        .chart-wrap { position: relative; width: 100%; height: 320px; }
+        .chart-section, .ranking-section { background: var(--sidebar-bg); padding: 26px; border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--card-shadow); display: flex; flex-direction: column; }
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-strong); display: flex; justify-content: space-between; align-items: center; }
+
+        /* Ranking */
+        .ranking-sub { font-size: 12px; color: var(--text-muted); margin-top: -10px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .ranking-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; margin-bottom: 6px; border-radius: var(--radius-sm); background-color: var(--item-bg); border: 1px solid transparent; cursor: pointer; transition: all 0.2s ease; }
+        .ranking-item:hover { background-color: var(--card-hover); border-color: var(--border); transform: translateX(4px); }
+        .rank-pos { font-size: 14px; font-weight: 700; color: var(--text-muted); width: 32px; }
+        .rank-nome { font-weight: 600; color: var(--text-strong); flex: 1; font-size: 13px; }
+        .rank-score { font-weight: 700; color: var(--success); font-size: 13px; background: rgba(46, 160, 67, 0.15); padding: 4px 10px; border-radius: 20px; }
+
+        /* Tabela */
+        .table-section { background: var(--sidebar-bg); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--card-shadow); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background-color: var(--th-bg); padding: 16px 22px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+        td { padding: 16px 22px; font-size: 13px; border-bottom: 1px solid var(--border); color: var(--text-main); }
+        tbody tr:hover { background-color: var(--hover-bg); }
+        tbody tr.row-sel { background-color: rgba(56, 139, 253, 0.12); }
+        tr:last-child td { border-bottom: none; }
+        
+        .badge-ipcm { padding: 5px 12px; border-radius: 30px; font-size: 11px; font-weight: 700; display: inline-block; }
+        .badge-high { background: rgba(46, 160, 67, 0.18); color: var(--success-text); border: 1px solid rgba(46, 160, 67, 0.4); }
+        .badge-med { background: rgba(227, 179, 65, 0.18); color: var(--warning-text); border: 1px solid rgba(227, 179, 65, 0.4); }
+        .badge-low { background: rgba(248, 81, 73, 0.18); color: var(--danger); border: 1px solid rgba(248, 81, 73, 0.4); }
+
+        @media (max-width: 1100px) { .middle-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) {
+            body { flex-direction: column; height: auto; overflow: auto; }
+            .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+            .main-content { height: auto; overflow: visible; padding: 24px 18px; }
+            .table-section { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-head">
+        <div>
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5L2 8l10 5.5L22 8l-10-5.5zM2 11.5v5l10 5.5 10-5.5v-5l-10 5.5-10-5.5z"/></svg>
+                IPCM Predict
+            </div>
+            <div class="logo-sub">Potencial de Consórcio por Município</div>
+        </div>
+        <button type="button" id="btn-tema" class="btn-tema" aria-label="Alternar tema claro/escuro" title="Alternar tema claro/escuro"></button>
+        </div>
+
+        <div class="control-group">
+            <label>Estado (UF)</label>
+            <select id="uf"><option>Carregando dados...</option></select>
+        </div>
+
+        <div class="control-group">
+            <label>Município Alvo</label>
+            <select id="municipio"></select>
+        </div>
+
+        <div class="control-group">
+            <label>Segmento de Consórcio</label>
+            <select id="segmento">
+                <option value="geral">Consórcio Geral / Multiprofissional</option>
+                <option value="imoveis">Bens Imóveis</option>
+                <option value="auto_moto">Veículos Leves (Auto/Moto)</option>
+                <option value="pesados_agro">Veículos Pesados &amp; Maquinário Agro</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Fator Restrição Crédito (Peso %)</label>
+            <input type="range" id="pesoCredito" min="0" max="100" step="5" value="25">
+            <div class="slider-value"><span id="pesoCreditoValor">25</span>% de Impacto</div>
+        </div>
+
+        <button class="btn-export" onclick="exportarCSV()">📥 Exportar Base (CSV)</button>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h1 id="titulo-pagina">Potencial de Consórcio</h1>
+            <p id="subtitulo">Os valores exibidos nos cartões representam a nota do município (de 0 a 100) em cada pilar.</p>
+        </div>
+
+        <!-- 1. BLOCO DE CARDS (KPIs) -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-title">Score Final IPCM</div>
+                <div class="kpi-value" id="kpi-score" style="color: var(--blue-accent);">0.0</div>
+                <div class="kpi-sub" id="kpi-classificacao">Classificação: A calcular...</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Pilar: Massa Salarial</div>
+                <div class="kpi-value" id="kpi-massa">0.0</div>
+                <div class="kpi-sub">Renda e poder de compra (0 a 100)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Pilar: Frota Alvo</div>
+                <div class="kpi-value" id="kpi-frota" style="color: var(--success-text);">0.0</div>
+                <div class="kpi-sub">Potencial de Renovação (0 a 100)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Pilar: Restrição de Crédito</div>
+                <div class="kpi-value" id="kpi-credito" style="color: var(--warning-text);">0.0</div>
+                <div class="kpi-sub" id="kpi-credito-sub">Nota 100 = maior restrição (maior oportunidade)</div>
+            </div>
+        </div>
+
+        <!-- 2. MAPA DE CALOR (Largura Total) -->
+        <div class="map-full-section">
+            <div class="section-title">🗺️ Heatmap IPCM (Potencial Geográfico)</div>
+            <div class="map-wrap">
+                <div id="map"></div>
+                <div id="map-status" class="map-status" hidden></div>
+            </div>
+            <div class="map-legend">
+                <span><i class="dot" style="background: #f85149;"></i>Baixo potencial (&lt; 55)</span>
+                <span><i class="dot" style="background: #e3b341;"></i>Moderado (55 a 75)</span>
+                <span><i class="dot" style="background: #2ea043;"></i>Alto potencial (≥ 75)</span>
+                <span><i class="dot sem-dado"></i>Sem dados</span>
+            </div>
+        </div>
+
+        <!-- 3. GRID CENTRAL (Radar e Ranking - 2 Colunas Lado a Lado) -->
+        <div class="middle-grid">
+            <div class="chart-section">
+                <div class="section-title">
+                    <span>Decomposição do Potencial</span>
+                </div>
+                <div class="chart-wrap"><canvas id="radarChart"></canvas></div>
+            </div>
+            
+            <div class="ranking-section">
+                <div class="section-title" id="ranking-titulo">🔥 Polos Oceano Azul</div>
+                <div class="ranking-sub" id="ranking-sub">Cidades com maior apetite no segmento</div>
+                <div class="ranking-list" id="ranking-list"></div>
+            </div>
+        </div>
+
+        <!-- 4. TABELA DE DADOS -->
+        <div class="table-section">
+            <div class="table-note" id="tabela-nota" hidden></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código IBGE</th>
+                        <th>Município</th>
+                        <th>População</th>
+                        <th>Score Massa</th>
+                        <th>Score Frota</th>
+                        <th>Score Crédito</th>
+                        <th>Quadrante</th>
+                        <th>Score IPCM</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-corpo"></tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+        const css = nome => getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+        const temaClaro = () => document.documentElement.getAttribute('data-theme') === 'light';
+
+        Chart.defaults.color = css('--text-muted');
+        Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
+
+        // Limiares únicos de classificação (usados em badges, mapa e legenda)
+        const LIM_ALTO = 75;
+        const LIM_MEDIO = 55;
+        const COR_ALTO = '#2ea043', COR_MEDIO = '#e3b341', COR_BAIXO = '#f85149';
+
+        let map, geojsonLayer, radarChart;
+        let ufCarregada = '';
+        let geoReqId = 0;
+        let codSelecionado = null;
+        let layersPorMun = {};
+        let todosMunicipios = [];       // base completa (modo Brasil)
+        let munPorChave = {};           // chave (6 dígitos) -> município
+        let estiloPendente = false;
+        const LIMITE_TABELA_BR = 200;   // linhas exibidas na tabela no modo Brasil (o CSV exporta tudo)
+        // Extremos do território (Chuí/RS, Oiapoque/AP, Monte Caburaí/RR, Serra do Divisor/AC)
+        const BRASIL = L.latLngBounds([-34.0, -74.5], [5.5, -28.0]);         // chave (6 dígitos) -> camada Leaflet do município
+        let baseIPCM = {};
+        let pesosPadrao = {};
+        let rotulos = {};
+        let scoresPorMunicipio = {};   // chave: 6 primeiros dígitos do código IBGE
+        let dadosExportacaoGlobal = [];
+
+        // O IBGE usa 7 dígitos (com verificador); alguns datasets usam 6. Normaliza para 6.
+        const chaveMun = v => String(v).replace(/\D/g, '').slice(0, 6);
+        const ehNumero = v => typeof v === 'number' && Number.isFinite(v);
+        const fmtNota = v => ehNumero(v) ? v.toFixed(1) : 'N/D';
+
+        const modoBrasil = () => document.getElementById('uf').value === 'BR';
+        const listaDaSelecao = uf => uf === 'BR' ? todosMunicipios : (baseIPCM[uf] || []);
+
+        function mostrarStatusMapa(msg) {
+            const el = document.getElementById('map-status');
+            if (!msg) { el.hidden = true; return; }
+            el.textContent = msg;
+            el.hidden = false;
+        }
+
+        function classificar(score) {
+            if (score >= LIM_ALTO) return { classe: 'badge-high', texto: 'Alto Potencial', cor: COR_ALTO };
+            if (score >= LIM_MEDIO) return { classe: 'badge-med', texto: 'Potencial Moderado', cor: COR_MEDIO };
+            return { classe: 'badge-low', texto: 'Baixo Potencial', cor: COR_BAIXO };
+        }
+
+        function aplicarCoresGrafico() {
+            if (!radarChart) return;
+            const r = radarChart.options.scales.r;
+            r.angleLines.color = css('--chart-grid');
+            r.grid.color = css('--chart-grid');
+            r.pointLabels.color = css('--text-main');
+            const ds = radarChart.data.datasets[0];
+            ds.borderColor = css('--blue-accent');
+            ds.backgroundColor = css('--radar-fill');
+            radarChart.update();
+        }
+
+        function atualizarBotaoTema() {
+            const btn = document.getElementById('btn-tema');
+            const claro = temaClaro();
+            btn.textContent = claro ? '🌙' : '☀️';   // mostra o tema para o qual vai mudar
+            const destino = claro ? 'escuro' : 'claro';
+            btn.title = `Mudar para o tema ${destino}`;
+            btn.setAttribute('aria-label', `Mudar para o tema ${destino}`);
+        }
+
+        function alternarTema() {
+            const novo = temaClaro() ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', novo);
+            try { localStorage.setItem('ipcm-tema', novo); } catch (e) { /* armazenamento indisponível: vale só nesta sessão */ }
+            atualizarBotaoTema();
+            aplicarCoresGrafico();
+            if (geojsonLayer) geojsonLayer.setStyle(styleMap);
+        }
+
+        function inicializarComponentes() {
+            const ctxRadar = document.getElementById('radarChart').getContext('2d');
+            radarChart = new Chart(ctxRadar, {
+                type: 'radar',
+                data: {
+                    labels: ['Massa Salarial', 'População', 'Frota Alvo', 'Restrição Crédito', 'PIB p.c.'],
+                    datasets: [{
+                        label: 'Pontuação do Pilar',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: css('--radar-fill'),
+                        borderColor: css('--blue-accent'),
+                        pointBackgroundColor: '#FF3621',
+                        pointBorderColor: '#ffffff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            min: 0, max: 100,
+                            angleLines: { color: css('--chart-grid') },
+                            grid: { color: css('--chart-grid') },
+                            pointLabels: { color: css('--text-main'), font: { size: 11, weight: '600' } },
+                            ticks: { display: false }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            map = L.map('map', {
+                zoomControl: true,
+                preferCanvas: true,       // renderização em canvas: necessária para desenhar ~5.570 municípios no modo Brasil
+                maxBounds: BRASIL.pad(0.1),
+                maxBoundsViscosity: 1.0   // impede arrastar para fora do Brasil
+            });
+            map.fitBounds(BRASIL);
+            map.setMinZoom(map.getZoom()); // não permite afastar além do enquadramento do país
+            criarControleCentralizar();
+            map.attributionControl.setPrefix(false);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 10,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Malhas: IBGE'
+            }).addTo(map);
+        }
+
+        async function carregarDados() {
+            try {
+                // Cache-buster para o navegador ler sempre o JSON mais recente
+                const res = await fetch('ipcm_dashboard.json?v=' + Date.now());
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                pesosPadrao = data.pesos_padrao || {};
+                rotulos = data.rotulos || {};
+                atualizarRotulosRadar();
+                baseIPCM = {};
+
+                data.municipios.forEach(m => {
+                    m.cod = Number(m.cod);
+                    if (!baseIPCM[m.uf]) baseIPCM[m.uf] = [];
+                    baseIPCM[m.uf].push(m);
+                });
+                Object.values(baseIPCM).forEach(l => l.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+
+                todosMunicipios = data.municipios.slice().sort((a, b) =>
+                    a.nome.localeCompare(b.nome, 'pt-BR') || a.uf.localeCompare(b.uf));
+                munPorChave = {};
+                data.municipios.forEach(m => { munPorChave[chaveMun(m.cod)] = m; });
+
+                const selectUF = document.getElementById('uf');
+                selectUF.innerHTML = '';
+                const optBR = document.createElement('option');
+                optBR.value = 'BR'; optBR.textContent = 'Brasil (todos os estados)';
+                selectUF.appendChild(optBR);
+                const ufs = Object.keys(baseIPCM).sort();
+                ufs.forEach(uf => {
+                    const opt = document.createElement('option');
+                    opt.value = uf; opt.textContent = `UF: ${uf}`;
+                    selectUF.appendChild(opt);
+                });
+                if (ufs.includes('SP')) selectUF.value = 'SP';
+
+                sincronizarSliderComSegmento();
+                atualizarListaMunicipios();
+
+            } catch (error) {
+                console.error("Erro ao ler JSON:", error);
+                const t = document.getElementById('titulo-pagina');
+                t.innerText = "⚠️ Não foi possível carregar os dados";
+                t.style.color = "var(--danger)";
+                document.getElementById('subtitulo').innerText =
+                    "Verifique se 'ipcm_dashboard.json' está na mesma pasta e abra a página por um servidor local " +
+                    "(ex.: python -m http.server). Navegadores bloqueiam fetch() em arquivos abertos via file://.";
+            }
+        }
+
+        function atualizarRotulosRadar() {
+            const ordem = ['massa', 'demografia', 'frota', 'credito', 'pib'];
+            radarChart.data.labels = ordem.map((k, i) => rotulos[k] || radarChart.data.labels[i]);
+            radarChart.update();
+        }
+
+        // Os pesos podem vir como fração (0.25) ou percentual (25); o slider trabalha em %.
+        function pesoEmPercentual(v) {
+            if (!ehNumero(v)) return 0;
+            return v <= 1 ? v * 100 : v;
+        }
+
+        function sincronizarSliderComSegmento() {
+            const seg = document.getElementById('segmento').value;
+            const w = pesosPadrao[seg];
+            if (w && ehNumero(w.credito)) {
+                document.getElementById('pesoCredito').value = Math.round(pesoEmPercentual(w.credito));
+            }
+        }
+
+        function recalcularScoreDinamico(mun, segmento, novoPesoCredito) {
+            const segData = mun[segmento];
+            if (!segData || !segData.pilares) {
+                return { score: 0, pilares: {}, demanda: undefined, oceano_azul: false };
+            }
+
+            const pesos = pesosPadrao[segmento] || {};
+            const wCred = Math.min(100, Math.max(0, novoPesoCredito));
+            const nCred = segData.pilares.credito;
+            const credValido = ehNumero(nCred);
+
+            // Soma dos pesos originais dos demais pilares (inclui os sem nota), para redistribuir (100 - wCred) proporcionalmente
+            let totalOutros = 0;
+            for (const [pilar, p] of Object.entries(pesos)) {
+                if (pilar !== 'credito' && ehNumero(p) && p > 0) totalOutros += p;
+            }
+
+            // Mesma regra do pipeline: pilares sem nota saem do cálculo e o peso é renormalizado entre os restantes
+            // (inclusive o crédito). No peso padrão do slider, o resultado reproduz o 'ipcm' do JSON.
+            let somaW = 0, somaNW = 0;
+            for (const [pilar, nota] of Object.entries(segData.pilares)) {
+                if (!ehNumero(nota)) continue;
+                let w;
+                if (pilar === 'credito') {
+                    w = wCred;
+                } else {
+                    const p = pesos[pilar];
+                    if (!ehNumero(p) || p <= 0 || totalOutros <= 0) continue;
+                    w = credValido ? (p / totalOutros) * (100 - wCred) : p; // sem crédito (sede bancária), só proporção importa
+                }
+                somaW += w;
+                somaNW += nota * w;
+            }
+
+            let score = somaW > 0 ? somaNW / somaW : 0;
+            // Crédito com 100% de peso e outros pilares sem peso efetivo: nada a ponderar
+            if (!(somaW > 0) && credValido) score = nCred;
+
+            return {
+                score: Math.min(100, Math.max(0, score)),
+                pilares: segData.pilares,
+                demanda: segData.demanda,
+                oceano_azul: !!segData.oceano_azul
+            };
+        }
+
+        function atualizarListaMunicipios() {
+            const uf = document.getElementById('uf').value;
+            const selectMun = document.getElementById('municipio');
+            selectMun.innerHTML = '';
+
+            const comUF = uf === 'BR'; // nomes se repetem entre estados: mostra a UF no modo Brasil
+            listaDaSelecao(uf).forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.cod;
+                opt.textContent = comUF ? `${m.nome} - ${m.uf} (${m.cod})` : `${m.nome} (${m.cod})`;
+                selectMun.appendChild(opt);
+            });
+
+            processarEAtualizarDashboard();
+
+            if (uf !== ufCarregada) {
+                ufCarregada = uf;
+                carregarGeoJSONdaUF(uf);
+            }
+        }
+
+        // Reenquadra o mapa no município selecionado (útil se o usuário se perder ao arrastar/dar zoom)
+        function centralizarNoSelecionado() {
+            if (!map || !geojsonLayer) return;
+            const layer = codSelecionado !== null ? layersPorMun[chaveMun(codSelecionado)] : null;
+            if (layer) {
+                map.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 10 });
+                layer.bringToFront(); // garante que a borda de destaque fique visível
+            } else {
+                map.fitBounds(geojsonLayer.getBounds()); // sem geometria do município: mostra o estado inteiro
+            }
+        }
+
+        function criarControleCentralizar() {
+            const Controle = L.Control.extend({
+                options: { position: 'topleft' },
+                onAdd() {
+                    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control btn-centralizar');
+                    const a = L.DomUtil.create('a', '', div);
+                    a.href = '#';
+                    a.setAttribute('role', 'button');
+                    a.title = 'Centralizar no município selecionado';
+                    a.setAttribute('aria-label', 'Centralizar no município selecionado');
+                    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                        '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>' +
+                        '<path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
+                    L.DomEvent.disableClickPropagation(div);
+                    L.DomEvent.on(a, 'click', e => { L.DomEvent.preventDefault(e); centralizarNoSelecionado(); });
+                    return div;
+                }
+            });
+            map.addControl(new Controle());
+        }
+
+        function selecionarMunicipio(cod) {
+            document.getElementById('municipio').value = cod;
+            processarEAtualizarDashboard();
+            centralizarNoSelecionado();
+        }
+
+        function processarEAtualizarDashboard() {
+            const uf = document.getElementById('uf').value;
+            const codMun = Number(document.getElementById('municipio').value);
+            const segmento = document.getElementById('segmento').value;
+            const pesoCredito = parseInt(document.getElementById('pesoCredito').value, 10);
+
+            document.getElementById('pesoCreditoValor').innerText = pesoCredito;
+
+            const listaProcessada = listaDaSelecao(uf).map(m => {
+                const res = recalcularScoreDinamico(m, segmento, pesoCredito);
+                return {
+                    cod: m.cod, nome: m.nome, uf: m.uf, pop: m.pop,
+                    score_ipcm: res.score, pilares: res.pilares,
+                    demanda: res.demanda, oceano_azul: res.oceano_azul,
+                    quadrante: (m[segmento] || {}).quadrante || 'N/D',
+                    sede_bancaria: !!m.sede_bancaria
+                };
+            }).sort((a, b) => b.score_ipcm - a.score_ipcm);
+
+            dadosExportacaoGlobal = listaProcessada;
+
+            let munAtual = listaProcessada.find(m => m.cod === codMun);
+            if (!munAtual && listaProcessada.length > 0) munAtual = listaProcessada[0];
+
+            codSelecionado = munAtual ? munAtual.cod : null;
+            if (munAtual) {
+                document.getElementById('municipio').value = munAtual.cod; // mantém o select em sincronia
+                renderizarInterface(munAtual, listaProcessada);
+            }
+
+            atualizarCoresDoMapa(listaProcessada);
+        }
+
+        function renderizarInterface(mun, listaRanking) {
+            document.getElementById('titulo-pagina').innerText = `Potencial de Consórcio: ${mun.nome} - ${mun.uf}`;
+            document.getElementById('titulo-pagina').style.color = '';
+            document.getElementById('kpi-score').innerText = mun.score_ipcm.toFixed(1);
+
+            const cls = classificar(mun.score_ipcm);
+            const txt = mun.oceano_azul ? 'Polo Oceano Azul 🏆' : cls.texto;
+            document.getElementById('kpi-classificacao').innerHTML =
+                `Classificação: <span class="badge-ipcm ${cls.classe}">${txt}</span><br><span style="display:inline-block;margin-top:6px;">Quadrante: ${mun.quadrante}</span>`;
+
+            document.getElementById('kpi-massa').innerText = fmtNota(mun.pilares.massa);
+            document.getElementById('kpi-frota').innerText = fmtNota(mun.pilares.frota);
+            document.getElementById('kpi-credito').innerText = fmtNota(mun.pilares.credito);
+            document.getElementById('kpi-credito-sub').innerText = mun.sede_bancaria
+                ? 'Sede bancária: crédito não comparável (peso redistribuído nos demais pilares)'
+                : 'Nota 100 = maior restrição (maior oportunidade)';
+
+            radarChart.data.datasets[0].data = [
+                mun.pilares.massa, mun.pilares.demografia, mun.pilares.frota,
+                mun.pilares.credito, mun.pilares.pib
+            ].map(v => ehNumero(v) ? v : 0);
+            radarChart.update();
+
+            // Ranking: Oceano Azul; se não houver nenhum, mostra os maiores scores e rotula como tal
+            const oceanos = listaRanking.filter(m => m.oceano_azul).slice(0, 5);
+            const temOceano = oceanos.length > 0;
+            const listOA = temOceano ? oceanos : listaRanking.slice(0, 5);
+
+            document.getElementById('ranking-titulo').innerText = temOceano ? '🔥 Polos Oceano Azul' : '🏆 Maiores Potenciais';
+            document.getElementById('ranking-sub').innerText = temOceano
+                ? 'Demanda alta + crédito restrito + porte mínimo, neste segmento'
+                : 'Nenhum Oceano Azul neste segmento/UF; exibindo os 5 maiores scores';
+
+            const cRanking = document.getElementById('ranking-list');
+            cRanking.innerHTML = '';
+            listOA.forEach((item, i) => {
+                const div = document.createElement('div');
+                div.className = 'ranking-item';
+                div.onclick = () => selecionarMunicipio(item.cod);
+                div.innerHTML = `
+                    <div class="rank-pos">${i === 0 ? (temOceano ? '🔥' : '🥇') : `#${i + 1}`}</div>
+                    <div class="rank-nome">${item.nome}${modoBrasil() ? ` - ${item.uf}` : ''}</div>
+                    <div class="rank-score">${item.score_ipcm.toFixed(1)} pts</div>
+                `;
+                cRanking.appendChild(div);
+            });
+
+            const tbody = document.getElementById('tabela-corpo');
+            tbody.innerHTML = '';
+            // Modo Brasil: renderiza só as maiores linhas (5.570 <tr> a cada ajuste do slider deixaria a página lenta)
+            let visiveis = listaRanking;
+            const nota = document.getElementById('tabela-nota');
+            if (modoBrasil() && listaRanking.length > LIMITE_TABELA_BR) {
+                visiveis = listaRanking.slice(0, LIMITE_TABELA_BR);
+                const sel = listaRanking.find(m => m.cod === mun.cod);
+                if (sel && !visiveis.includes(sel)) visiveis.push(sel);   // o município selecionado sempre aparece
+                nota.textContent = `Exibindo os ${LIMITE_TABELA_BR} maiores scores de ${listaRanking.length.toLocaleString('pt-BR')} municípios` +
+                    ' (mais o município selecionado). Use "Exportar Base (CSV)" para obter a base completa.';
+                nota.hidden = false;
+            } else {
+                nota.hidden = true;
+            }
+            visiveis.forEach(m => {
+                const tr = document.createElement('tr');
+                tr.style.cursor = 'pointer';
+                if (m.cod === mun.cod) tr.className = 'row-sel';
+                tr.onclick = () => selecionarMunicipio(m.cod);
+                const bClass = classificar(m.score_ipcm).classe;
+                tr.innerHTML = `
+                    <td style="color: var(--text-muted); font-size: 12px;">${m.cod}</td>
+                    <td style="font-weight: 600;">${m.nome}${modoBrasil() ? ` - ${m.uf}` : ''}</td>
+                    <td>${ehNumero(m.pop) ? m.pop.toLocaleString('pt-BR') : 'N/D'}</td>
+                    <td>${fmtNota(m.pilares.massa)}</td>
+                    <td>${fmtNota(m.pilares.frota)}</td>
+                    <td>${fmtNota(m.pilares.credito)}</td>
+                    <td style="color: var(--text-muted); font-size: 12px;">${m.quadrante}</td>
+                    <td><span class="badge-ipcm ${bClass}">${m.score_ipcm.toFixed(1)}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getColorIPCM(score) {
+            if (!score) return 'transparent';
+            return classificar(score).cor;
+        }
+
+        function styleMap(feature) {
+            const key = chaveMun(feature.properties.codarea);
+            const score = scoresPorMunicipio[key] || 0;
+            const selecionado = codSelecionado !== null && key === chaveMun(codSelecionado);
+            const claro = temaClaro();
+            return {
+                fillColor: getColorIPCM(score),
+                weight: selecionado ? 3 : 1,
+                color: selecionado ? (claro ? '#1f2328' : '#ffffff') : (claro ? 'rgba(31,35,40,0.35)' : 'rgba(255,255,255,0.2)'),
+                fillOpacity: score ? 0.75 : 0.1
+            };
+        }
+
+        async function carregarGeoJSONdaUF(ufStr) {
+            const ibgeUF = { 'AC':12, 'AL':27, 'AM':13, 'AP':16, 'BA':29, 'CE':23, 'DF':53, 'ES':32, 'GO':52, 'MA':21, 'MG':31, 'MS':50, 'MT':51, 'PA':15, 'PB':25, 'PE':26, 'PI':22, 'PR':41, 'RJ':33, 'RN':24, 'RO':11, 'RR':14, 'RS':43, 'SC':42, 'SE':28, 'SP':35, 'TO':17 };
+            const codUF = ibgeUF[ufStr];
+            if (ufStr !== 'BR' && !codUF) return;
+
+            const reqId = ++geoReqId; // descarta respostas antigas se o usuário trocar de UF rapidamente
+            if (geojsonLayer) { map.removeLayer(geojsonLayer); geojsonLayer = null; }
+            layersPorMun = {};
+            mostrarStatusMapa(ufStr === 'BR' ? 'Carregando malha dos 5.570 municípios (pode levar alguns segundos)…' : 'Carregando malha do estado…');
+
+            try {
+                // API v3 do IBGE: intrarregiao=municipio devolve a malha municipal; o código vem em properties.codarea
+                const recurso = ufStr === 'BR' ? 'paises/BR' : `estados/${codUF}`;
+                const url = `https://servicodados.ibge.gov.br/api/v3/malhas/${recurso}` +
+                    `?formato=${encodeURIComponent('application/vnd.geo+json')}&qualidade=minima&intrarregiao=municipio`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (reqId !== geoReqId) return;
+
+                layersPorMun = {};
+                geojsonLayer = L.geoJSON(data, {
+                    style: styleMap,
+                    onEachFeature: (feature, layer) => {
+                        const key = chaveMun(feature.properties.codarea);
+                        layersPorMun[key] = layer;
+                        layer.on('click', () => {
+                            const m = munPorChave[key];
+                            if (m) selecionarMunicipio(m.cod);
+                        });
+                        // Tooltip dinâmico: reflete o score atual (slider/segmento), não o do momento da criação
+                        layer.bindTooltip(() => {
+                            const m = munPorChave[key];
+                            const s = scoresPorMunicipio[key];
+                            return `<b>${m ? `${m.nome} - ${m.uf}` : key}</b><br>Score IPCM: ${s !== undefined ? s.toFixed(1) : 'N/D'}`;
+                        }, { className: 'map-tooltip', sticky: true });
+                    }
+                }).addTo(map);
+                map.fitBounds(ufStr === 'BR' ? BRASIL : geojsonLayer.getBounds());
+                mostrarStatusMapa(null);
+
+                setTimeout(() => map.invalidateSize(), 300);
+            } catch (error) {
+                console.error("Erro ao carregar a malha do IBGE:", error);
+                if (reqId === geoReqId) mostrarStatusMapa('Não foi possível carregar a malha do IBGE (verifique a conexão).');
+            }
+        }
+
+        function atualizarCoresDoMapa(lista) {
+            scoresPorMunicipio = {};
+            lista.forEach(m => scoresPorMunicipio[chaveMun(m.cod)] = m.score_ipcm);
+            if (!geojsonLayer || estiloPendente) return;
+            estiloPendente = true;   // vários eventos do slider no mesmo quadro geram uma única repintura
+            requestAnimationFrame(() => {
+                estiloPendente = false;
+                if (geojsonLayer) geojsonLayer.setStyle(styleMap);
+            });
+        }
+
+        function exportarCSV() {
+            const esc = v => {
+                const s = (v === null || v === undefined) ? '' : String(v);
+                return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+            };
+            const nota = v => ehNumero(v) ? v.toFixed(1) : '';
+            const linhas = ['Codigo_IBGE,Municipio,UF,Populacao,Score_Massa,Score_Frota,Score_Credito,Quadrante,Score_IPCM_Final'];
+            dadosExportacaoGlobal.forEach(r => {
+                linhas.push([
+                    r.cod, esc(r.nome), r.uf, ehNumero(r.pop) ? r.pop : '',
+                    nota(r.pilares.massa), nota(r.pilares.frota), nota(r.pilares.credito), esc(r.quadrante),
+                    r.score_ipcm.toFixed(2)
+                ].join(','));
+            });
+            // BOM para o Excel reconhecer UTF-8 (acentos); Blob evita problemas de encodeURI com '#', etc.
+            const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `extracao_ipcm_${document.getElementById('uf').value}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        window.onload = () => {
+            inicializarComponentes();
+            atualizarBotaoTema();
+            document.getElementById('btn-tema').addEventListener('click', alternarTema);
+            document.getElementById('uf').addEventListener('change', atualizarListaMunicipios);
+            document.getElementById('municipio').addEventListener('change', () => {
+                processarEAtualizarDashboard();
+                centralizarNoSelecionado();
+            });
+            document.getElementById('segmento').addEventListener('change', () => {
+                sincronizarSliderComSegmento();
+                processarEAtualizarDashboard();
+            });
+            document.getElementById('pesoCredito').addEventListener('input', processarEAtualizarDashboard);
+
+            carregarDados();
+        };
+    </script>
+</body>
+</html>
